@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, increment } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -92,8 +92,8 @@ export default function App(){
   const stored=ldPin();
   const [unlocked,setUnlocked]=useState(false);
   const [savedPin,setSavedPin]=useState(stored.pin||PIN_DEFAULT);
-  if(!unlocked)return React.createElement(PinScreen,{savedPin,onUnlock:()=>setUnlocked(true)});
-  return React.createElement(MainApp,{savedPin,setSavedPin:(np)=>{setSavedPin(np);sv({...ld(),pin:np});}});
+  if(!unlocked)return <PinScreen savedPin={savedPin} onUnlock={()=>setUnlocked(true)}/>;
+  return <MainApp savedPin={savedPin} setSavedPin={(np)=>{setSavedPin(np);svPin({pin:np});}}/>;
 }
 
 function PinScreen({savedPin,onUnlock}){
