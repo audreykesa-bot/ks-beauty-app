@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, increment } from "firebase/firestore";
 import { db } from "./firebase";
 
-const PIN_SK="ks_pin";
-const ldPin=()=>{try{return JSON.parse(localStorage.getItem(PIN_SK)||"{}");}catch{return{};}};
-const svPin=(d)=>{try{localStorage.setItem(PIN_SK,JSON.stringify(d));return true;}catch(e){return false;}};
+const SK="ks_v6";
+const ld=()=>{try{return JSON.parse(localStorage.getItem(SK)||"{}");}catch{return{};}};
+const sv=(d)=>{try{localStorage.setItem(SK,JSON.stringify(d));return true;}catch(e){return false;}};
 const PHOTO_SK="ks_photos_v1";
 const ldPhotos=()=>{try{return JSON.parse(localStorage.getItem(PHOTO_SK)||"{}");}catch{return{};}};
 const svPhotos=(d)=>{try{localStorage.setItem(PHOTO_SK,JSON.stringify(d));return true;}catch(e){return false;}};
@@ -89,11 +89,11 @@ function buildFideliteWa(c){
 }
 
 export default function App(){
-  const stored=ldPin();
+  const stored=ld();
   const [unlocked,setUnlocked]=useState(false);
   const [savedPin,setSavedPin]=useState(stored.pin||PIN_DEFAULT);
-  if(!unlocked)return <PinScreen savedPin={savedPin} onUnlock={()=>setUnlocked(true)}/>;
-  return <MainApp savedPin={savedPin} setSavedPin={(np)=>{setSavedPin(np);svPin({pin:np});}}/>;
+  if(!unlocked)return React.createElement(PinScreen,{savedPin,onUnlock:()=>setUnlocked(true)});
+  return React.createElement(MainApp,{savedPin,setSavedPin:(np)=>{setSavedPin(np);sv({...ld(),pin:np});}});
 }
 
 function PinScreen({savedPin,onUnlock}){
@@ -159,7 +159,6 @@ function MainApp({savedPin,setSavedPin}){
     const u4=onSnapshot(collection(db,"attente"),snap=>setAttente(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>{u1();u2();u3();u4();};
   },[]);
-
   const persist=()=>{};
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
   if(loading)return(<div className="ks-app" style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}><div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#8b5e52",marginBottom:12}}>K's Beauty Studio</div><div style={{color:"#c9a79e",fontSize:14}}>Chargement...</div></div></div>);
@@ -172,7 +171,7 @@ function MainApp({savedPin,setSavedPin}){
       await setDoc(doc(db,"clients",id),{...form,id,seances:editId?(clients.find(c=>c.id===editId)?.seances||0):0});
       showToast(editId?"Fiche mise a jour":"Fiche enregistree");
       setView("list");setForm(EMPTY_FORM);setEditId(null);
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const deleteClient=async(id)=>{
     if(!window.confirm("Supprimer cette fiche ?"))return;
@@ -181,72 +180,77 @@ function MainApp({savedPin,setSavedPin}){
       await Promise.all(rdvs.filter(r=>r.clientId===id).map(r=>deleteDoc(doc(db,"rdvs",r.id))));
       const photos=ldPhotos();delete photos[id];svPhotos(photos);
       showToast("Fiche supprimee");setView("list");
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const addSeance=async(clientId)=>{
     try{await updateDoc(doc(db,"clients",clientId),{seances:increment(1)});showToast("Seance ajoutee");}
-    catch(e){showToast("Erreur réseau","error");}
+    catch(e){showToast("Erreur reseau","error");}
+  };
+  const removeSeance=async(clientId)=>{
+    try{await updateDoc(doc(db,"clients",clientId),{seances:increment(-1)});showToast("Seance retiree");}
+    catch(e){showToast("Erreur reseau","error");}
   };
   const saveRdv=async(r)=>{
+    let nc=clients;let rdvF={...r};
+    if(!r.clientId&&r.nomLibre?.trim()){
+      const parts=r.nomLibre.trim().split(" ");
+      const prenom=parts[0]||"";const nom=parts.slice(1).join(" ")||prenom;
+      const newId="c_"+Date.now();
+      await setDoc(doc(db,"clients",newId),{...EMPTY_FORM,id:newId,prenom,nom,telephone:r.tel||"",dateVisite:r.date,seances:0});
+      rdvF={...rdvF,clientId:newId,nomLibre:"",tel:""};
+      showToast("Fiche creee pour "+r.nomLibre);
+    }
     try{
-      let rdvF={...r};
-      if(!r.clientId&&r.nomLibre?.trim()){
-        const parts=r.nomLibre.trim().split(" ");
-        const prenom=parts[0]||"";const nom=parts.slice(1).join(" ")||prenom;
-        const newId="c_"+Date.now();
-        await setDoc(doc(db,"clients",newId),{...EMPTY_FORM,id:newId,prenom,nom,telephone:r.tel||"",dateVisite:r.date,seances:0});
-        rdvF={...rdvF,clientId:newId,nomLibre:"",tel:""};
-        showToast("Fiche creee pour "+r.nomLibre);
-      }
       const id=rdvF.id||"r_"+Date.now();
       await setDoc(doc(db,"rdvs",id),{...rdvF,id});
       if(!r.nomLibre?.trim())showToast("RDV enregistre");
       if(selected&&rdvF.clientId===selected.id)setView("detail");else setView("agenda");
       setRdvForm(null);
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const deleteRdv=async(id)=>{
+    const rdv=rdvs.find(r=>r.id===id);
     try{
       const rdv=rdvs.find(r=>r.id===id);
       if(rdv?.effectue&&rdv?.clientId)await updateDoc(doc(db,"clients",rdv.clientId),{seances:increment(-1)});
       await deleteDoc(doc(db,"rdvs",id));
       showToast("RDV supprime");
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const validerRdv=async(rdv)=>{
     try{
       await updateDoc(doc(db,"rdvs",rdv.id),{effectue:true});
       if(rdv.clientId)await updateDoc(doc(db,"clients",rdv.clientId),{seances:increment(1)});
       showToast("Seance validee");
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const saveNote=async(rdvId,note)=>{
     try{
       await updateDoc(doc(db,"rdvs",rdvId),{noteSeance:note});
       setNoteRdvId(null);setNoteText("");showToast("Note enregistree");
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const saveSoin=async(s)=>{
     try{
       const id=s.id||"soin_"+Date.now();
       await setDoc(doc(db,"catalogue",id),{...s,id});
       showToast(s.id?"Modifie":"Ajoute");setView("catalogue");setSoinForm(null);
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const deleteSoin=async(id)=>{
     try{await deleteDoc(doc(db,"catalogue",id));showToast("Supprime");}
-    catch(e){showToast("Erreur réseau","error");}
+    catch(e){showToast("Erreur reseau","error");}
   };
   const addAttente=async(a)=>{
     try{
       const id="a_"+Date.now();
       await setDoc(doc(db,"attente",id),{...a,id,date:toIso(now)});
       showToast("Ajoutee a la liste d'attente");
-    }catch(e){showToast("Erreur réseau","error");}
+    }catch(e){showToast("Erreur reseau","error");}
   };
   const removeAttente=async(id)=>{
     try{await deleteDoc(doc(db,"attente",id));showToast("Retiree");}
-    catch(e){showToast("Erreur réseau","error");}
+    catch(e){showToast("Erreur reseau","error");}
   };
 
   // Stats
@@ -403,16 +407,7 @@ function MainApp({savedPin,setSavedPin}){
                 {badge&&<span style={{fontSize:11,background:badge.bg,color:badge.color,padding:"2px 10px",borderRadius:10,fontWeight:500}}>{badge.label}</span>}
               </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",background:"#fff8f5",borderBottom:"1px solid #f0ddd8"}}>
-              <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                <span style={{fontSize:36,color:"#8b5e52",fontWeight:600,lineHeight:1}}>{fc.seances||0}</span>
-                <span style={{fontSize:13,color:"#b5938a"}}>seance{(fc.seances||0)!==1?"s":""}</span>
-              </div>
-              <div style={{display:"flex",gap:6}}>
-                {badge&&fc.telephone&&<a href={buildFideliteWa(fc)} target="_blank" style={{padding:"6px 12px",borderRadius:16,background:"linear-gradient(135deg,#8b5e52,#c9896e)",color:"#fff",fontSize:12,fontWeight:500}}>Fidelite</a>}
-                <button style={{padding:"7px 14px",borderRadius:20,border:"1.5px solid #8b5e52",background:"#fff",color:"#8b5e52",fontSize:13,fontWeight:500,cursor:"pointer"}} onClick={()=>addSeance(fc.id)}>+</button>
-              </div>
-            </div>
+            <SeanceBox fc={fc} badge={badge} addSeance={addSeance} removeSeance={removeSeance}/>
             {next&&(
               <div style={{padding:"8px 18px",background:"#fdf8f6",borderBottom:"1px solid #f0ddd8"}}>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#b5938a",marginBottom:4}}>
@@ -878,6 +873,67 @@ function MainApp({savedPin,setSavedPin}){
   );
 }
 
+function SeanceBox({fc,badge,addSeance,removeSeance}){
+  const ADMIN_CODE="1987";
+  const [adminMode,setAdminMode]=useState(false);
+  const [pinInput,setPinInput]=useState("");
+  const [showPin,setShowPin]=useState(false);
+  const [err,setErr]=useState(false);
+  const digits=["1","2","3","4","5","6","7","8","9","","0","X"];
+  useEffect(()=>{
+    if(pinInput.length===4){
+      if(pinInput===ADMIN_CODE){setAdminMode(true);setShowPin(false);setPinInput("");setErr(false);}
+      else{setErr(true);setTimeout(()=>{setPinInput("");setErr(false);},700);}
+    }
+  },[pinInput]);
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",background:"#fff8f5",borderBottom:"1px solid #f0ddd8"}}>
+        <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+          <span style={{fontSize:36,color:"#8b5e52",fontWeight:600,lineHeight:1}}>{fc.seances||0}</span>
+          <span style={{fontSize:13,color:"#b5938a"}}>seance{(fc.seances||0)!==1?"s":""}</span>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {badge&&fc.telephone&&<a href={buildFideliteWa(fc)} target="_blank" style={{padding:"6px 12px",borderRadius:16,background:"linear-gradient(135deg,#8b5e52,#c9896e)",color:"#fff",fontSize:12,fontWeight:500}}>Fidelite</a>}
+          {adminMode?(
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button onClick={()=>removeSeance(fc.id)} style={{width:36,height:36,borderRadius:18,border:"1.5px solid #9b2335",background:"#fff",color:"#9b2335",fontSize:22,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+              <button onClick={()=>addSeance(fc.id)} style={{width:36,height:36,borderRadius:18,border:"1.5px solid #2d6a4f",background:"#fff",color:"#2d6a4f",fontSize:22,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+              <button onClick={()=>setAdminMode(false)} style={{fontSize:10,color:"#c9a79e",background:"none",border:"none",cursor:"pointer",padding:"4px"}}>Quitter</button>
+            </div>
+          ):(
+            <button onClick={()=>setShowPin(true)} style={{fontSize:11,color:"#c9a79e",background:"none",border:"1px solid #e8d5d0",borderRadius:12,padding:"4px 10px",cursor:"pointer"}}>Admin</button>
+          )}
+        </div>
+      </div>
+      {showPin&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:20,padding:"24px 20px",width:"min(300px,90vw)",textAlign:"center"}}>
+            <div style={{fontSize:15,color:"#8b5e52",fontWeight:600,marginBottom:6}}>Mode Admin</div>
+            <div style={{fontSize:12,color:"#b5938a",marginBottom:20}}>Entre le code admin pour modifier les seances</div>
+            <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:20}}>
+              {[0,1,2,3].map(i=><div key={i} style={{width:14,height:14,borderRadius:7,background:err?"#9b2335":i<pinInput.length?"#8b5e52":"#e8d5d0",transition:"background 0.2s"}}/>)}
+            </div>
+            {err&&<div style={{color:"#9b2335",fontSize:12,marginBottom:10}}>Code incorrect</div>}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,maxWidth:220,margin:"0 auto 16px"}}>
+              {digits.map((d,i)=>(
+                <button key={i} onClick={()=>{
+                  if(d==="")return;
+                  if(d==="X"){setPinInput(p=>p.slice(0,-1));return;}
+                  if(pinInput.length<4)setPinInput(p=>p+d);
+                }} style={{height:48,borderRadius:12,border:"1px solid #f0ddd8",background:d===""?"transparent":"#fff",fontSize:18,color:"#3a2a27",cursor:d===""?"default":"pointer"}}>
+                  {d==="X"?"⌫":d}
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>{setShowPin(false);setPinInput("");setErr(false);}} style={{color:"#b5938a",background:"none",border:"none",fontSize:13,cursor:"pointer"}}>Annuler</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhotoSection({clientId,showToast}){
   const fileRef=useRef();
   const [label,setLabel]=useState("Avant");
@@ -1092,4 +1148,3 @@ const S={
   weekNavBtn:{background:"none",border:"1px solid #e8d5d0",borderRadius:20,width:30,height:30,fontSize:16,color:"#8b5e52",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"},
   iconBtn:{width:28,height:28,borderRadius:14,border:"none",background:"#f0ddd8",color:"#8b5e52",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0},
 };
-
