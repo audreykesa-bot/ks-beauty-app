@@ -152,15 +152,19 @@ function MainApp({savedPin,setSavedPin}){
   const [noteText,setNoteText]=useState("");
   const now=new Date();
 
+  const [fbError,setFbError]=useState(null);
   useEffect(()=>{
-    const u1=onSnapshot(collection(db,"clients"),snap=>{setClients(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);});
-    const u2=onSnapshot(collection(db,"rdvs"),snap=>setRdvs(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    const u3=onSnapshot(collection(db,"catalogue"),snap=>{const items=snap.docs.map(d=>({id:d.id,...d.data()}));if(items.length>0)setCatalogue(items);});
-    const u4=onSnapshot(collection(db,"attente"),snap=>setAttente(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    return()=>{u1();u2();u3();u4();};
+    const onErr=(label)=>(err)=>{console.error(label,err);setFbError(err.message||String(err));setLoading(false);};
+    const u1=onSnapshot(collection(db,"clients"),snap=>{setClients(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},onErr("clients"));
+    const u2=onSnapshot(collection(db,"rdvs"),snap=>setRdvs(snap.docs.map(d=>({id:d.id,...d.data()}))),onErr("rdvs"));
+    const u3=onSnapshot(collection(db,"catalogue"),snap=>{const items=snap.docs.map(d=>({id:d.id,...d.data()}));if(items.length>0)setCatalogue(items);},onErr("catalogue"));
+    const u4=onSnapshot(collection(db,"attente"),snap=>setAttente(snap.docs.map(d=>({id:d.id,...d.data()}))),onErr("attente"));
+    const failsafe=setTimeout(()=>setLoading(false),6000);
+    return()=>{u1();u2();u3();u4();clearTimeout(failsafe);};
   },[]);
   const persist=()=>{};
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
+  if(fbError)return(<div className="ks-app" style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:20,textAlign:"center"}}><div><div style={{fontSize:22,color:"#9b2335",marginBottom:12,fontWeight:600}}>Erreur de connexion</div><div style={{color:"#8b5e52",fontSize:14,marginBottom:8}}>Impossible de charger les donnees.</div><div style={{color:"#c9a79e",fontSize:12,wordBreak:"break-word"}}>{fbError}</div></div></div>);
   if(loading)return(<div className="ks-app" style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}><div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#8b5e52",marginBottom:12}}>K's Beauty Studio</div><div style={{color:"#c9a79e",fontSize:14}}>Chargement...</div></div></div>);
   const soinColor=(id)=>catalogue.find(x=>x.id===id)?.couleur||"#8b5e52";
 
